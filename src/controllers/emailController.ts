@@ -1,7 +1,11 @@
+// src/controllers/emailController.ts
 import { Request, Response } from "express";
 import EmailModel from "../models/Email.js";
 import { esClient } from "../config/elasticsearch.js";
 import { categorizeEmail } from "../services/emailCategorization.js";
+import { sendSlackNotification } from "../utils/slackNotifier.js";
+import { triggerWebhook } from "../utils/webhookNotifier.js";
+
 
 // Fetch all emails from MongoDB
 export const getAllEmails = async (req: Request, res: Response) => {
@@ -41,24 +45,25 @@ export const searchEmails = async (req: Request, res: Response) => {
   }
 };
 
-// Process a single email: categorize using Python AI and save to MongoDB + Elasticsearch
+// Process a single email: categorize, save to MongoDB + Elasticsearch, send notifications
 export const processEmail = async (req: Request, res: Response) => {
   try {
-    const { subject, body, from, account } = req.body;
+    const { subject, body, from, account, to } = req.body;
 
-    // Step 1: Get label from Python Flask API
+    // Step 1: Get label from AI
     const label = await categorizeEmail(body);
 
     // Step 2: Save to MongoDB
     const email = new EmailModel({
-      uid: Date.now(), // or generate a unique UID
+      uid: Date.now(), // or use a proper unique ID
       account,
       folder: "INBOX",
       from,
+      to,
       subject,
       body,
       label,
-      date: new Date()
+      date: new Date(),
     });
 
     const savedEmail = await email.save();
@@ -73,8 +78,14 @@ export const processEmail = async (req: Request, res: Response) => {
       subject: savedEmail.subject,
       body: savedEmail.body,
       label: savedEmail.label,
-      date: savedEmail.date
+      date: savedEmail.date,
     });
+
+    // Step 4: Slack notification & webhook if Interested
+    if (label === "Interested") {
+      await sendSlackNotification(savedEmail);
+      await triggerWebhook(savedEmail);
+    }
 
     res.status(200).json({ message: "Email categorized and saved", label });
   } catch (err) {
@@ -82,7 +93,6 @@ export const processEmail = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Error processing email" });
   }
 };
-
 
 // Save an email document to Elasticsearch
 export const saveEmailToElasticsearch = async (emailData: any) => {
