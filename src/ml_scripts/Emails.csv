@@ -1,0 +1,6 @@
+﻿email_text,label
+"""I am interested in your product""",Interested
+"""Please schedule a meeting next week""",Meeting Booked
+"""No thanks,not interested.""",Not Interested
+"""Get cheap meds now!!!""",Spam
+"""I am out of office until next Monday.""",Out of Office

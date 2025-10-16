@@ -1,42 +1,20 @@
 import { Request, Response } from "express";
-import Email from "../models/Email.js";
+import EmailModel from "../models/Email.js";
 import { esClient } from "../config/elasticsearch.js";
+import { categorizeEmail } from "../services/emailCategorization.js";
 
 // Fetch all emails from MongoDB
 export const getAllEmails = async (req: Request, res: Response) => {
   try {
-    const emails = await Email.find().sort({ date: -1 });
-    console.log("📧 Found emails count:", emails.length);
+    const emails = await EmailModel.find().sort({ receivedAt: -1 });
     res.status(200).json({ count: emails.length, emails });
-  } catch (error) {
-    let errorMessage = "Failed to fetch emails";
-    if (error instanceof Error) errorMessage = error.message;
-    console.error("🔥 Error fetching emails:", error);
-    res.status(500).json({ error: errorMessage });
-  }
-};
-
-export const saveEmailToElasticsearch = async (emailData: any) => {
-  try {
-    await esClient.index({
-      index: "emails",
-      document: {
-        subject: emailData.subject,
-        sender: emailData.from,
-        to: emailData.to,
-        date: emailData.date,
-        folder: emailData.folder || "INBOX",
-        account: emailData.account,
-        body: emailData.body,
-      },
-    });
-    console.log(`✅ Indexed email UID ${emailData.uid} in Elasticsearch`);
   } catch (err) {
-    console.error("❌ Error indexing email to Elasticsearch:", err);
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch emails" });
   }
 };
 
-// Search emails from Elasticsearch
+// Search emails in Elasticsearch
 export const searchEmails = async (req: Request, res: Response) => {
   try {
     const query = req.query.query as string | undefined;
@@ -48,24 +26,73 @@ export const searchEmails = async (req: Request, res: Response) => {
     if (account) filters.push({ match: { account } });
 
     const must: any[] = [];
-    if (query && query.trim() !== "") {
-      must.push({ match: { body: query } });
-    }
+    if (query && query.trim() !== "") must.push({ match: { body: query } });
 
     const result = await esClient.search({
       index: "emails",
-      query: {
-        bool: {
-          must,
-          filter: filters,
-        },
-      },
+      query: { bool: { must, filter: filters } },
     });
 
     const hits = result.hits.hits.map((hit: any) => hit._source);
     res.status(200).json(hits);
-  } catch (error) {
-    console.error("❌ Error searching emails:", error);
-    res.status(500).json({ message: "Search failed", error });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Search failed", error: err });
+  }
+};
+
+// Process a single email: categorize using Python AI and save to MongoDB + Elasticsearch
+export const processEmail = async (req: Request, res: Response) => {
+  try {
+    const { subject, body, from, account } = req.body;
+
+    // Step 1: Get label from Python Flask API
+    const label = await categorizeEmail(body);
+
+    // Step 2: Save to MongoDB
+    const email = new EmailModel({
+      uid: Date.now(), // or generate a unique UID
+      account,
+      folder: "INBOX",
+      from,
+      subject,
+      body,
+      label,
+      date: new Date()
+    });
+
+    const savedEmail = await email.save();
+
+    // Step 3: Save to Elasticsearch
+    await saveEmailToElasticsearch({
+      uid: savedEmail.uid,
+      account: savedEmail.account,
+      folder: savedEmail.folder,
+      from: savedEmail.from,
+      to: savedEmail.to,
+      subject: savedEmail.subject,
+      body: savedEmail.body,
+      label: savedEmail.label,
+      date: savedEmail.date
+    });
+
+    res.status(200).json({ message: "Email categorized and saved", label });
+  } catch (err) {
+    console.error("Error processing email:", err);
+    res.status(500).json({ message: "Error processing email" });
+  }
+};
+
+
+// Save an email document to Elasticsearch
+export const saveEmailToElasticsearch = async (emailData: any) => {
+  try {
+    await esClient.index({
+      index: "emails",
+      document: emailData,
+    });
+    console.log(`✅ Indexed email UID ${emailData.uid}`);
+  } catch (err) {
+    console.error("❌ Error indexing email:", err);
   }
 };

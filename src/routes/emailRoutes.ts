@@ -1,9 +1,10 @@
 import express from "express";
-import { getAllEmails, searchEmails } from "../controllers/emailController.js";
+import { getAllEmails, searchEmails, processEmail } from "../controllers/emailController.js";
 
 const router = express.Router();
 
 router.get("/emails", getAllEmails);
 router.get("/emails/search", searchEmails);
+router.post("/categorize", processEmail);
 
 export default router;

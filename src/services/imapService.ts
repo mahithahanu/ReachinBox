@@ -1,12 +1,12 @@
 import { ImapFlow } from "imapflow";
 import dotenv from "dotenv";
-import Email from "../models/Email.js";
+import EmailModel from "../models/Email.js";
 import { simpleParser } from "mailparser";
 import { saveEmailToElasticsearch } from "../controllers/emailController.js";
+import { categorizeEmail } from "./emailCategorization.js";
 
 dotenv.config();
 
-// Define your email accounts
 const accounts = [
   {
     user: process.env.EMAIL_USER!,
@@ -22,111 +22,70 @@ const accounts = [
   },
 ];
 
-// Helper: get date 30 days ago
 const getSinceDate = () => {
   const date = new Date();
   date.setDate(date.getDate() - 30);
   return date;
 };
 
-// Main function to connect and sync all accounts
 export const connectIMAP = async () => {
-  for (const account of accounts) {
-    connectAccount(account); // call each account
-  }
+  for (const account of accounts) connectAccount(account);
 };
 
-// Function to handle a single account
 const connectAccount = async (account: any) => {
   const client = new ImapFlow({
     host: account.host,
     port: account.port,
     secure: true,
-    auth: {
-      user: account.user,
-      pass: account.pass,
-    },
+    auth: { user: account.user, pass: account.pass },
   });
 
-  client.on("error", (err) => {
-    console.error(`❌ IMAP error for ${account.user}:`, err);
-  });
-
-  client.on("close", () => {
-    console.warn(`⚠️ IMAP connection closed for ${account.user}, reconnecting...`);
-    setTimeout(() => connectAccount(account), 5000); // reconnect after 5 sec
-  });
+  client.on("error", (err) => console.error(err));
+  client.on("close", () => setTimeout(() => connectAccount(account), 5000));
 
   try {
     await client.connect();
-    console.log(`✅ Connected to ${account.user}`);
-
-    // Initial fetch
     await fetchEmails(client, account);
 
-    // Real-time listener
-    client.on("exists", async () => {
-      await fetchEmails(client, account, { unseenOnly: true });
-    });
-
-    // Start IDLE mode
+    client.on("exists", async () => await fetchEmails(client, account, { unseenOnly: true }));
     await client.idle();
-
   } catch (err) {
-    console.error(`❌ Failed IMAP connect for ${account.user}:`, err);
-    setTimeout(() => connectAccount(account), 5000); // reconnect after 5 sec
+    console.error(err);
+    setTimeout(() => connectAccount(account), 5000);
   }
 };
 
-// Function to fetch emails
 const fetchEmails = async (client: ImapFlow, account: any, options: { unseenOnly?: boolean } = {}) => {
   const lock = await client.getMailboxLock("INBOX");
   try {
-    const searchCriteria = options.unseenOnly
-      ? { seen: false }
-      : { since: getSinceDate() };
-
+    const searchCriteria = options.unseenOnly ? { seen: false } : { since: getSinceDate() };
     const uidsResult = await client.search(searchCriteria);
     const uids: number[] = uidsResult || [];
-    if (uids.length === 0) return;
+    if (!uids.length) return;
 
     for await (const message of client.fetch(uids, { envelope: true, source: true, uid: true, internalDate: true })) {
       if (!message.source) continue;
+      const parsed = await simpleParser(message.source as Buffer);
 
-      try {
-        const parsed = await simpleParser(message.source as Buffer);
+      const label = await categorizeEmail(parsed.text || parsed.html || "");
 
-        const emailData = {
-          uid: message.uid,
-          account: account.user,
-          folder: "INBOX",
-          from: parsed.from?.text || "",
-          to: Array.isArray(parsed.to)
-            ? parsed.to.map((t) => (t as any).address)
-            : parsed.to
-            ? [(parsed.to as any).text || (parsed.to as any).address]
-            : [],
-          subject: parsed.subject || "",
-          body: parsed.text || parsed.html || "",
-          date: parsed.date || message.internalDate || new Date(),
-        };
+      const emailData = {
+        uid: message.uid,
+        account: account.user,
+        folder: "INBOX",
+        from: parsed.from?.text || "",
+        to: Array.isArray(parsed.to) ? parsed.to.map(t => (t as any).address) : [],
+        subject: parsed.subject || "",
+        body: parsed.text || parsed.html || "",
+        date: parsed.date || message.internalDate || new Date(),
+        label
+      };
 
-        // Save to MongoDB
-        await Email.updateOne(
-          { uid: message.uid, account: account.user },
-          emailData,
-          { upsert: true }
-        );
-
-        // Save to Elasticsearch
-        await saveEmailToElasticsearch(emailData);
-
-      } catch (err) {
-        console.error(`❌ Error processing message UID ${message.uid} for ${account.user}:`, err);
-      }
+      await EmailModel.updateOne({ uid: message.uid, account: account.user }, emailData, { upsert: true });
+      await saveEmailToElasticsearch(emailData);
     }
 
-    console.log(`📥 Fetched ${uids.length} emails for ${account.user} (${options.unseenOnly ? "new only" : "initial"})`);
+    console.log(`📥 Fetched ${uids.length} emails for ${account.user}`);
   } finally {
     lock.release();
   }
