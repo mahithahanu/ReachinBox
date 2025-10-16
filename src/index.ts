@@ -8,7 +8,7 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
-app.use("/emails", emailRoutes);
+app.use("/api", emailRoutes);
 
 const PORT = process.env.PORT || 5000;
 

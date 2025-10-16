@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const EmailSchema = new mongoose.Schema({
     uid: { type: Number, required: true },
     account: { type: String, required: true }, // email account
+    folder: { type: String, default: "INBOX" }, // new field
     from: String,
     to: [String],
     subject: String,
