@@ -9,7 +9,7 @@ const EmailSchema = new mongoose.Schema({
   subject: String,
   date: Date,
   body: String,
-  label: String, // added for AI categorization
+  label: String, 
 }, { timestamps: true });
 
 EmailSchema.index({ uid: 1, account: 1 }, { unique: true });

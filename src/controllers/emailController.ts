@@ -1,4 +1,3 @@
-// src/controllers/emailController.ts
 import { Request, Response } from "express";
 import EmailModel from "../models/Email.js";
 import { esClient } from "../config/elasticsearch.js";
@@ -6,8 +5,6 @@ import { categorizeEmail } from "../services/emailCategorization.js";
 import { sendSlackNotification } from "../utils/slackNotifier.js";
 import { triggerWebhook } from "../utils/webhookNotifier.js";
 
-
-// Fetch all emails from MongoDB
 export const getAllEmails = async (req: Request, res: Response) => {
   try {
     const emails = await EmailModel.find().sort({ receivedAt: -1 });
@@ -18,44 +15,53 @@ export const getAllEmails = async (req: Request, res: Response) => {
   }
 };
 
-// Search emails in Elasticsearch
 export const searchEmails = async (req: Request, res: Response) => {
   try {
-    const query = req.query.query as string | undefined;
-    const folder = req.query.folder as string | undefined;
-    const account = req.query.account as string | undefined;
-
-    const filters: any[] = [];
-    if (folder) filters.push({ match: { folder } });
-    if (account) filters.push({ match: { account } });
-
-    const must: any[] = [];
-    if (query && query.trim() !== "") must.push({ match: { body: query } });
+    const query = (req.query.query as string | undefined)?.toLowerCase() || "";
+    const folder = (req.query.folder as string | undefined)?.toLowerCase() || "";
+    const account = (req.query.account as string | undefined)?.toLowerCase() || "";
 
     const result = await esClient.search({
       index: "emails",
-      query: { bool: { must, filter: filters } },
+      size: 10000, 
+      query: { match_all: {} },
     });
 
-    const hits = result.hits.hits.map((hit: any) => hit._source);
+    let hits = result.hits.hits.map((hit: any) => hit._source);
+
+    if (account && account !== "all") {
+      hits = hits.filter((e: any) => e.account?.toLowerCase() === account);
+    }
+
+    if (folder && folder !== "all") {
+      hits = hits.filter((e: any) => e.folder?.toLowerCase() === folder);
+    }
+
+    if (query) {
+      hits = hits.filter(
+        (e: any) =>
+          e.subject?.toLowerCase().includes(query) ||
+          e.body?.toLowerCase().includes(query) ||
+          e.from?.toLowerCase().includes(query)
+      );
+    }
+
     res.status(200).json(hits);
   } catch (err) {
-    console.error(err);
+    console.error("❌ Search failed:", err);
     res.status(500).json({ message: "Search failed", error: err });
   }
 };
 
-// Process a single email: categorize, save to MongoDB + Elasticsearch, send notifications
+
 export const processEmail = async (req: Request, res: Response) => {
   try {
     const { subject, body, from, account, to } = req.body;
 
-    // Step 1: Get label from AI
     const label = await categorizeEmail(body);
 
-    // Step 2: Save to MongoDB
     const email = new EmailModel({
-      uid: Date.now(), // or use a proper unique ID
+      uid: Date.now(),
       account,
       folder: "INBOX",
       from,
@@ -68,7 +74,6 @@ export const processEmail = async (req: Request, res: Response) => {
 
     const savedEmail = await email.save();
 
-    // Step 3: Save to Elasticsearch
     await saveEmailToElasticsearch({
       uid: savedEmail.uid,
       account: savedEmail.account,
@@ -80,8 +85,6 @@ export const processEmail = async (req: Request, res: Response) => {
       label: savedEmail.label,
       date: savedEmail.date,
     });
-
-    // Step 4: Slack notification & webhook if Interested
     if (label === "Interested") {
       await sendSlackNotification(savedEmail);
       await triggerWebhook(savedEmail);
@@ -94,7 +97,6 @@ export const processEmail = async (req: Request, res: Response) => {
   }
 };
 
-// Save an email document to Elasticsearch
 export const saveEmailToElasticsearch = async (emailData: any) => {
   try {
     await esClient.index({

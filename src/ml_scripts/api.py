@@ -8,7 +8,6 @@ nltk.download('stopwords')
 
 app = Flask(__name__)
 
-# Load trained model and vectorizer
 model = joblib.load('email_classifier.pkl')
 vectorizer = joblib.load('vectorizer.pkl')
 

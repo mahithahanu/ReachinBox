@@ -1,7 +1,6 @@
-// webhookNotifier.ts
 import axios from "axios";
 
-const WEBHOOK_URL = process.env.WEBHOOK_URL; // load from environment variable
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
 export const triggerWebhook = async (email: any) => {
   if (!WEBHOOK_URL) {

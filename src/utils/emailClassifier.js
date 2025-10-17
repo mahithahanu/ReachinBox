@@ -6,7 +6,7 @@ async function classifyEmail(emailText) {
       email_text: emailText
     });
 
-    return response.data.label; // the predicted label
+    return response.data.label;
   } catch (error) {
     console.error('Error classifying email:', error.message);
     return null;

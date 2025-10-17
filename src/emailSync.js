@@ -3,14 +3,12 @@ const { simpleParser } = require('mailparser');
 const mongoose = require('mongoose');
 const Email = require('./models/Email');
 
-// Connect MongoDB
 mongoose.connect('mongodb://localhost:27017/emailDB', {
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.log(err));
 
-// Accounts array
 const accounts = [
     {
         user: 'example1@gmail.com',
@@ -28,14 +26,12 @@ const accounts = [
     }
 ];
 
-// Fetch emails for last 30 days
 function getSinceDate() {
     const date = new Date();
     date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0]; // YYYY-MM-DD
+    return date.toISOString().split('T')[0]; 
 }
 
-// Function to connect and listen to each account
 async function connectAccount(account) {
     const config = {
         imap: account,
@@ -47,7 +43,6 @@ async function connectAccount(account) {
 
         await connection.openBox('INBOX');
 
-        // Fetch last 30 days emails initially
         const searchCriteria = [['SINCE', getSinceDate()]];
         const fetchOptions = { bodies: [''], markSeen: false };
         const messages = await connection.search(searchCriteria, fetchOptions);
@@ -77,7 +72,6 @@ async function connectAccount(account) {
 
         console.log(`Initial fetch done for ${account.user}`);
 
-        // Start IDLE mode for real-time updates
         connection.on('mail', async () => {
             console.log(`New mail detected for ${account.user}`);
             const newMessages = await connection.search([['SINCE', getSinceDate()]], fetchOptions);
@@ -109,5 +103,4 @@ async function connectAccount(account) {
     }
 }
 
-// Loop through accounts
 accounts.forEach(account => connectAccount(account));
