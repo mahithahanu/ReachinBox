@@ -5,8 +5,8 @@ const router = express.Router();
 
 router.get("/emails", getAllEmails);
 
-router.get("/emails/search", searchEmails);
+// router.get("/emails/search", searchEmails);
 
-router.post("/emails/process", processEmail);
+// router.post("/emails/process", processEmail);
 
 export default router;
