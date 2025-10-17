@@ -12,7 +12,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors({
-  origin: ["https://reachinboxfrontend.onrender.com/","http://localhost:5173"],
+  origin: ["https://reachinboxfrontend.onrender.com","http://localhost:5173"],
   credentials: true
 }));
 app.use(express.json());
