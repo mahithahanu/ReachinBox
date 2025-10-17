@@ -19,9 +19,10 @@ app.use(express.json());
 
 app.use("/api", emailRoutes);
 
-mongoose.connect(process.env.MONGO_URI!, {})
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch(err => console.error("❌ MongoDB connection error:", err));
+const mongoURI = process.env.MONGO_URI || "mongodb+srv://chikkalamahitha40319:WSbndVuttixQgJqw@cluster0.bq4xn.mongodb.net/reachinbox?retryWrites=true&w=majority";
+mongoose.connect(mongoURI)
+  .then(() => console.log("MongoDB connected successfully"))
+  .catch((err) => console.error("MongoDB connection error:", err));
 
 esClient.info()
   .then(res => console.log("✅ Connected to Elasticsearch"))
