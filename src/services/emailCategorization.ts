@@ -2,7 +2,7 @@ import axios from "axios";
 
 export async function categorizeEmail(emailText: string): Promise<string> {
   try {
-    const response = await axios.post("http://127.0.0.1:5000/predict", {
+    const response = await axios.post("https://ml-service-aux9.onrender.com/predict", {
       email_text: emailText
     });
 

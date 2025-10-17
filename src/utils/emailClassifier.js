@@ -2,7 +2,7 @@ const axios = require('axios');
 
 async function classifyEmail(emailText) {
   try {
-    const response = await axios.post('http://127.0.0.1:5000/predict', {
+    const response = await axios.post('https://ml-service-aux9.onrender.com/predict', {
       email_text: emailText
     });
 
