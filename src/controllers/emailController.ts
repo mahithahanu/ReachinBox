@@ -7,7 +7,10 @@ import { triggerWebhook } from "../utils/webhookNotifier.js";
 
 export const getAllEmails = async (req: Request, res: Response) => {
   try {
-    const emails = await EmailModel.find().sort({ receivedAt: -1 });
+    const emails = await EmailModel.find()
+      .sort({ receivedAt: -1 })  // sort by date descending
+      .limit(1000);              // fetch only latest 1000 emails
+
     res.status(200).json({ count: emails.length, emails });
   } catch (err) {
     console.error(err);
